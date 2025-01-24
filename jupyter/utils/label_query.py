@@ -20,7 +20,7 @@ def query_labels(X, y, detector,
             True labels for the samples.
         
         detector : object
-            A model or detector used to estimate uncertainty or outlier scores (must have object.predict_confidence and object.decision_function methods)
+            A model or detector used to estimate uncertainty or outlier scores (must have object.predict_confidence and object.dec)
         
         queried_labels : array-like, shape (n_samples,), optional, default=None
             Array indicating which labels have already been queried. Unqueried labels should be marked with -1. 
