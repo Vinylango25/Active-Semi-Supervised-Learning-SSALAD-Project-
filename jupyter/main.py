@@ -26,7 +26,10 @@ for selected_datset in all_datasets:
     path = f'data/{selected_datset}.npz'
     data = np.load(path, allow_pickle=True)
     X, y = data['X'], data['y']
-    results = run_experiment(X, y, model_names = all_models, fractions=curr_fractions, dataset_name=selected_datset)
+    num_samples = 1000
+    if X.shape[0] <= num_samples:
+        num_samples = int(X.shape[0]//2)
+    results = run_experiment(X, y, num_samples=num_samples, model_names = all_models, fractions=curr_fractions, dataset_name=selected_datset)
     results_df = pd.concat([results_df, results])
     results.to_csv(f"{selected_datset}_run.csv", index=False)
 
