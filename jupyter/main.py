@@ -26,7 +26,30 @@ if 'ALL' in all_datasets:
 
 # all datset: ADBENCH:---> (one plot AUC score to unsupervised...)
 
-def process_dataset(selected_dataset):
+
+propagation_kernels = ["rbf", "knn"]
+RESULTS_FOLDER = "results"
+
+total_datasets = len(all_datasets)
+
+all_kernel_results = {
+    "rbf": pd.DataFrame(),
+    "knn": pd.DataFrame()
+}
+
+
+# a folder to add results if it doesn't exist
+os.makedirs(f'{RESULTS_FOLDER}', exist_ok=True)
+for each_kernel in propagation_kernels:
+    #create folder for kernels and their results
+    os.makedirs(f"{RESULTS_FOLDER}/{each_kernel}", exist_ok=True)
+    # to store individual data csvs: Helps to recover incase of errors
+    os.makedirs(f"{RESULTS_FOLDER}/{each_kernel}/csv", exist_ok=True)
+    #for png files
+    os.makedirs(f"{RESULTS_FOLDER}/{each_kernel}/png", exist_ok=True)
+
+
+def process_dataset(selected_dataset, kernel_name):
     path = f'{data_dir}/{selected_dataset}.npz'
     if not os.path.exists(path):
         print(f"File not found: {path}")
@@ -34,41 +57,51 @@ def process_dataset(selected_dataset):
     data = np.load(path, allow_pickle=True)
     X, y = data['X'], data['y']
     num_samples = 1000
-    if X.shape[0] <= num_samples:
-        num_samples = int(X.shape[0] // 2)
-    results = run_experiment(X, y, num_samples=num_samples, model_names=all_models, fractions=curr_fractions, dataset_name=selected_dataset)
-    results_df = pd.concat([results_df, results])
-    results.to_csv(f"{selected_dataset}_run.csv", index=False)
+    results = run_experiment(
+        X, 
+        y, 
+        num_samples=num_samples, 
+        model_names=all_models, 
+        fractions=curr_fractions, 
+        dataset_name=selected_dataset,
+        kernel=kernel_name
+        )
+    results.to_csv(f"{RESULTS_FOLDER}/{kernel_name}/csv/{selected_dataset}_run.csv", index=False)
     return results
 
-results_df = pd.DataFrame()
-total_datasets = len(all_datasets)
 
-with ThreadPoolExecutor(max_workers=16) as executor:
-    future_to_dataset = {executor.submit(process_dataset, dataset): dataset for dataset in all_datasets}
+
+with ThreadPoolExecutor(max_workers=4) as executor:
+    # future_to_dataset = {executor.submit(process_dataset, dataset, each_kernel): dataset for dataset in all_datasets}
+    future_to_dataset = {executor.submit(process_dataset, dataset, kernel): (dataset, kernel) 
+                         for kernel in propagation_kernels for dataset in all_datasets}
     for idx, future in enumerate(as_completed(future_to_dataset)):
-        dataset = future_to_dataset[future]
+        dataset, kernel = future_to_dataset[future]
         try:
-            result = future.result()
+            result = future.result()  
             if result is not None:
-                results_df = pd.concat([results_df, result])
-            print(f"Completed {idx + 1}/{total_datasets}: {dataset}")
+                if kernel not in all_kernel_results:
+                    all_kernel_results[kernel] = pd.DataFrame()
+                all_kernel_results[kernel] = pd.concat([all_kernel_results[kernel], result])
+            print(f"Completed {idx + 1}/{len(all_datasets) * len(propagation_kernels)}: {dataset} with kernel {kernel}")
         except Exception as exc:
-            print(f"{dataset} generated an exception: {exc}")
+            print(f"{dataset} with kernel {kernel} generated an exception: {exc}")
+    
+    #save all results
+    for kernel in propagation_kernels:
+        all_kernel_results[kernel].to_csv(f"{RESULTS_FOLDER}/{kernel}/all_run.csv", index=False)
 
-# save the results
-results_df.to_csv(f"all_run.csv", index=False)
+##plot
+for each_kernel in propagation_kernels:
+    kernel_df = all_kernel_results[each_kernel]
+    for each_data in all_datasets:
+        curr_results = kernel_df[kernel_df['dataset'] == each_data]
+        if curr_results.shape[0] <= 0:
+            print(f"No results for model = {all_models[0]} and data = {each_data}")
+            continue
+        plot_ssalad_results(curr_results, model_name=all_models[0], dataset=each_data, log_scale=True)
+        plt.tight_layout()
+        plt.savefig(f"{RESULTS_FOLDER}/{each_kernel}/png/{each_data}.png")
 
-# loop through datasets
-for each_data in all_datasets:
-    print(f"Plotting results for dataset: {each_data}")
-    curr_results_queries = results_df[results_df['dataset'] == each_data]
-    if curr_results_queries.shape[0] <= 0:
-        print(f"No results for model = {all_models[0]} and data = {each_data}")
-        continue
-    plot_ssalad_results(curr_results_queries, model_name=all_models[0], dataset=each_data, log_scale=True)
-    plt.savefig(f"{all_models[0]}_for_{each_data}_fig.png")
-    plt.tight_layout()
-    plt.show()
-
+        # plt.show()
 
