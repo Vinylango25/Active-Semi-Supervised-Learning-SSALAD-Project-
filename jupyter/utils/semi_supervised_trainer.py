@@ -155,7 +155,7 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     
     for frac in tqdm(fractions):
         test_size = 0.5
-        print(f"Dataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
+        print(f"\nDataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
         if not (0.0 < test_size < 1.0):
             error_message = f"Invalid test_size: {test_size} for fraction: {frac} in dataset: {dataset_name}"
             print(error_message)
