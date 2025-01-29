@@ -1,6 +1,20 @@
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.metrics import pairwise_distances
+from sklearn.metrics import silhouette_score
 import numpy as np
+
+
+def get_optimal_k(X, max_k=10):
+    best_k = 2
+    best_score = -1
+    for k in range(2, max_k+1):
+        kmeans = KMeans(n_clusters=k)
+        kmeans_labels = kmeans.fit_predict(X)
+        score = silhouette_score(X, kmeans_labels)
+        if score > best_score:
+            best_score = score
+            best_k = k
+    return best_k
 
 
 def query_labels(X, y, detector,
@@ -71,13 +85,30 @@ def query_labels(X, y, detector,
 
     elif strategy == 'clusters':
         # get clusters
-        clust = AgglomerativeClustering(n_clusters=num_labels)
-        clust_labels = clust.fit_predict(X[idx_unqueried,:])
-        # for each cluster, get the medoid
-        for i in range(num_labels):
-            idx_cluster = np.where(clust_labels == i)[0]
-            dist_mat = pairwise_distances(X[idx_cluster,:])
-            medoid_index = np.argmin(dist_mat.sum(axis=1))
-            queried_labels[idx_cluster[medoid_index]] = y[idx_cluster[medoid_index]]
+        try:
+            clust = AgglomerativeClustering(n_clusters=num_labels)
+            clust_labels = clust.fit_predict(X[idx_unqueried,:])
+            # for each cluster, get the medoid
+            for i in range(num_labels):
+                idx_cluster = np.where(clust_labels == i)[0]
+                dist_mat = pairwise_distances(X[idx_cluster,:])
+                medoid_index = np.argmin(dist_mat.sum(axis=1))
+                queried_labels[idx_cluster[medoid_index]] = y[idx_cluster[medoid_index]]
+        except Exception as e:
+            print(f"AgglomerativeClustering failed, falling back to KMeans. Error: {e}")
+            # Dynamically determine number of clusters for KMeans using silhouette score
+            num_labels = get_optimal_k(X[idx_unqueried,:])
+            print(f"Using KMeans with {num_labels} clusters")
+        
+            # Apply KMeans clustering
+            kmeans = KMeans(n_clusters=num_labels)
+            kmeans_labels = kmeans.fit_predict(X[idx_unqueried,:])
+        
+            # For each cluster, get the medoid
+            for i in range(num_labels):
+                idx_cluster = np.where(kmeans_labels == i)[0]
+                dist_mat = pairwise_distances(X[idx_cluster,:])
+                medoid_index = np.argmin(dist_mat.sum(axis=1))
+                queried_labels[idx_cluster[medoid_index]] = y[idx_cluster[medoid_index]]
 
     return queried_labels

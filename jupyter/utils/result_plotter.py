@@ -109,5 +109,6 @@ def plot_ssalad_results(results_df,dataset, model_name,log_scale=True):
     labels = strategies + ['propagation', 'no prop.']
 
     ax2.legend(markers, labels, bbox_to_anchor=(1, 1.0))
+    
 
-    plt.show()
+

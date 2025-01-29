@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 from sklearn.semi_supervised import LabelPropagation, LabelSpreading
+from sklearn.preprocessing import StandardScaler
 
 from pyod.models.pca import PCA
 from pyod.models.ocsvm import OCSVM
@@ -72,11 +73,17 @@ def label_propagation(X_train, labels, random_state=42):
 
 # functiom to evaluate model and log results
 def train_and_evaluate_model(X_train, X_test, y_train, y_test, semi_detector):
-    # train model
-    semi_detector.fit(X_train)
-    X_test_scores = semi_detector.decision_function(X_test)
-    roc_auc = roc_auc_score(y_test, X_test_scores)
-
+    try:
+        # train model
+        semi_detector.fit(X_train)
+        X_test_scores = semi_detector.decision_function(X_test)
+        # find ROC-AUC scores
+        roc_auc = roc_auc_score(y_test, X_test_scores)
+    except ValueError as e:
+        print(f"Error occured while getting the auc values : e={e}")
+        # handle error cases where AUC cannot be calculated E.G single class in the test set
+        roc_auc = np.nan
+        
     return roc_auc, semi_detector
 
 # main experiment function
@@ -136,10 +143,14 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
         query_strategies = ['random', 'uncertainty', 'anomalous', 'clusters']
     if propagations is None:
         propagations = [True, False]
-
     all_results = pd.DataFrame()
 
 
+    # scaler the data
+    scaler = StandardScaler()
+    X_ = X.copy()
+    X = scaler.fit_transform(X)
+    
     for frac in tqdm(fractions):
         for model_name in model_names:
             # define the semi supervised model to be used
