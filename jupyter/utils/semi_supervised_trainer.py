@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 from sklearn.semi_supervised import LabelPropagation, LabelSpreading
 from sklearn.preprocessing import StandardScaler
+import logging
 
 from pyod.models.pca import PCA
 from pyod.models.ocsvm import OCSVM
@@ -26,7 +27,8 @@ from utils.label_query import query_labels
 import warnings
 warnings.filterwarnings("ignore")
 
-
+# Configure logging
+logging.basicConfig(filename='experiment_errors.log', level=logging.ERROR, format='%(asctime)s %(message)s')
 
 # define the models
 PYOD_SELECTED_MODELS = {
@@ -152,6 +154,14 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     X = scaler.fit_transform(X)
     
     for frac in tqdm(fractions):
+        test_size = 0.5
+        print(f"Dataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
+        if not (0.0 < test_size < 1.0):
+            error_message = f"Invalid test_size: {test_size} for fraction: {frac} in dataset: {dataset_name}"
+            print(error_message)
+            logging.error(error_message)
+            continue
+
         for model_name in model_names:
             # define the semi supervised model to be used
             semi_detector_clf = PYOD_SELECTED_MODELS[model_name]()
@@ -162,7 +172,13 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                         Xsamp, ysamp = get_sampled_data(X, y, num_samples, random_state=rep)
 
                         # step2: Split into training and testing sets
-                        X_train, X_test, y_train, y_test = train_test_split(Xsamp, ysamp, test_size=0.5, random_state=rep, stratify=ysamp)
+                        try:
+                            X_train, X_test, y_train, y_test = train_test_split(Xsamp, ysamp, test_size=test_size, random_state=rep, stratify=ysamp)
+                        except ValueError as e:
+                            error_message = f"Error during train_test_split for dataset: {dataset_name}, fraction: {frac}, rep: {rep} - {e}"
+                            print(error_message)
+                            logging.error(error_message)
+                            continue
 
                         #unsupervised model, this is used when strategy is uncertainity/anomalous
                         unsup_detector = PYOD_SELECTED_MODELS[model_name]()
