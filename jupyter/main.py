@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -19,31 +20,54 @@ all_datasets = ['1_ALOI', '2_annthyroid', '3_backdoor', '4_breastw', '5_campaign
 
 all_models =  ['KNN', 'IForest']
 
+all_datasets = ["42_WBC"]
+
+propagation_kernels = ["rbf", "knn"]
+
+# a folder to add results if it doesn't exist
+os.makedirs('results', exist_ok=True)
+
+
+
 # all datset: ADBENCH:---> (one plot AUC score to unsupervised...)
+for each_kernel in propagation_kernels:
 
-results_df = pd.DataFrame()
-for selected_datset in all_datasets:
-    path = f'data/{selected_datset}.npz'
-    data = np.load(path, allow_pickle=True)
-    X, y = data['X'], data['y']
-    num_samples = 1000
-    results = run_experiment(X, y, num_samples=num_samples, model_names = all_models, fractions=curr_fractions, dataset_name=selected_datset)
-    results_df = pd.concat([results_df, results])
-    results.to_csv(f"{selected_datset}_run.csv", index=False)
+    #create folder for kernels and their results
+    os.makedirs(f"results/{each_kernel}", exist_ok=True)
+    # to store graphs
+    os.makedirs(f"results/{each_kernel}/png", exist_ok=True)
+    # to store individual data csvs: Helps to recover incase of errors
+    os.makedirs(f"results/{each_kernel}/csv", exist_ok=True)
+    
+    results_df = pd.DataFrame()
+    for selected_datset in all_datasets:
+        path = f'data/{selected_datset}.npz'
+        data = np.load(path, allow_pickle=True)
+        X, y = data['X'], data['y']
+        num_samples = 1000
+        results = run_experiment(
+            X, 
+            y, 
+            num_samples=num_samples, 
+            model_names = all_models, 
+            fractions=curr_fractions, 
+            dataset_name=selected_datset,
+            kernel = each_kernel
+        )
+        results_df = pd.concat([results_df, results])
+        results.to_csv(f"results/{each_kernel}/csv/{selected_datset}_run.csv", index=False)
 
-# save the results
-results_df.to_csv(f"all_run.csv", index=False)
-
-# loop through datasets
-for each_data in all_datasets:
-    for model_num, each_model in enumerate(all_models):
-        curr_results_queries = results_df[(results_df['dataset'] == each_data) & (results_df['dataset'] == each_data)]
-        if curr_results_queries.shape[0]<=0:
-            print(f"No results for model = {each_model} and data = {each_data}")
-            continue
-        plot_ssalad_results(curr_results_queries, model_name=each_model, dataset=each_data, log_scale=True)
-        plt.savefig(f"{each_model}_for_{each_data}_fig.png")
-        plt.tight_layout() 
-        plt.show()
-
+    # save the results
+    results_df.to_csv(f"results/{each_kernel}/all_run.csv", index=False)
+    
+    # loop through datasets
+    for each_data in all_datasets:
+        for model_num, each_model in enumerate(all_models):
+            curr_results_queries = results_df[(results_df['dataset'] == each_data) & (results_df['dataset'] == each_data)]
+            if curr_results_queries.shape[0]<=0:
+                print(f"No results for model = {each_model} and data = {each_data}")
+                continue
+            plot_ssalad_results(curr_results_queries, model_name=each_model, dataset=each_data, log_scale=True)
+            plt.savefig(f"results/{each_kernel}/png/{each_model}_for_{each_data}_fig.png")
+            
 

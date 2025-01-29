@@ -55,8 +55,8 @@ def get_sampled_data(X, y, num_samples, random_state=42):
     return Xsamp, ysamp
 
 # ftn to perform label propagation if needed
-def label_propagation(X_train, labels, random_state=42):
-    label_prop_model = LabelPropagation()
+def label_propagation(X_train, labels, random_state=42, kernel="knn"):
+    label_prop_model = LabelPropagation(kernel=kernel)
     label_prop_model.fit(X_train, labels)
     label_proba = label_prop_model.predict_proba(X_train)
     
@@ -87,7 +87,7 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, semi_detector):
     return roc_auc, semi_detector
 
 # main experiment function
-def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=None, query_strategies=None, propagations=None, dataset_name=""):
+def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=None, query_strategies=None, propagations=None, dataset_name="", kernel="rbf"):
     """
         Run an experiment for active learning and semi-supervised learning on a given dataset, evaluating different query strategies, models, and configurations.
     
@@ -177,7 +177,7 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             
                             # perfom propagation if enabled
                             if propagation:
-                                X_train, y_train = label_propagation(X_train, labels, random_state=rep)
+                                X_train, y_train = label_propagation(X_train, labels, random_state=rep, kernel=kernel)
                             else:
                                 remove_idx = np.where(labels == 1)[0]
                                 X_train = np.delete(X_train, remove_idx, axis=0)
