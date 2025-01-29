@@ -144,8 +144,6 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     if propagations is None:
         propagations = [True, False]
     all_results = pd.DataFrame()
-
-
     # scaler the data
     scaler = StandardScaler()
     X_ = X.copy()
@@ -159,7 +157,10 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                 for propagation in propagations:
                     for rep in range(reps):
                         # step1: data sample for training
-                        Xsamp, ysamp = get_sampled_data(X, y, num_samples, random_state=rep)
+                        if X.shape[0]>= 1000:
+                            Xsamp, ysamp = get_sampled_data(X, y, num_samples, random_state=rep)
+                        else:
+                            Xsamp, ysamp = X.copy(), y.copy()
 
                         # step2: Split into training and testing sets
                         X_train, X_test, y_train, y_test = train_test_split(Xsamp, ysamp, test_size=0.5, random_state=rep, stratify=ysamp)
