@@ -1,6 +1,6 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+import numpy as np
 
 # function for plotting results
 
@@ -89,8 +89,13 @@ def plot_ssalad_results(results_df,dataset, model_name,log_scale=True):
                     color=colors[i], linestyle=line_styles[j])
             ax2.fill_between(mean_result['fraction'], mean_result['roc_auc']-std_result['roc_auc'], mean_result['roc_auc']+std_result['roc_auc'],
                             alpha=0.2, color=colors[i])
-            
-    ax2.set_title(f'{model_name} on {dataset}')
+
+    num_samps = results_df['num_samples'].unique()[0]
+    ax2.set_title(f'{model_name} on {dataset} with {num_samps} samples')
+
+    ymin = np.maximum(ax2.get_ylim(),0.5)[0]
+    ymax = np.minimum(ax2.get_ylim(),1.0)[1]
+    ax2.set_ylim(ymin,ymax)
     if not split_axis:
         ax2.set_ylabel('AUC')
     ax2.set_xlabel(f'% labels queried')

@@ -8,19 +8,11 @@ from sklearn.preprocessing import StandardScaler
 import logging
 
 from pyod.models.pca import PCA
-from pyod.models.ocsvm import OCSVM
-from pyod.models.lof import LOF
-from pyod.models.cof import COF
-from pyod.models.hbos import HBOS
 from pyod.models.knn import KNN
-from pyod.models.sod import SOD
-from pyod.models.copod import COPOD
-from pyod.models.ecod import ECOD
 from pyod.models.iforest import IForest
-from pyod.models.loda import LODA
-from pyod.models.kde import KDE
-from pyod.models.cblof import CBLOF
 
+
+import xgboost as xgb
 
 from utils.label_query import query_labels
 
@@ -33,25 +25,35 @@ logging.basicConfig(filename='experiment_errors.log', level=logging.ERROR, forma
 # define the models
 PYOD_SELECTED_MODELS = {
     'PCA': PCA,
-    'OCSVM': OCSVM,
-    'LOF': LOF,
-    'COF': COF,
-    'HBOS': HBOS,
     'KNN': KNN,
-    'SOD': SOD,
-    'COPOD': COPOD,
-    'ECOD': ECOD,
     'IForest': IForest,
-    'LODA': LODA,
-    'KDE': KDE,
-    'CBLOF': CBLOF
 }
 
 
+
+def train_xgboost_regressor(X_train, y_train, X_test, y_test, random_seed, propagation):
+    if propagation and y_train.shape[1]>1:
+        xgb_model = xgb.XGBRegressor(random_state=random_seed)
+        mask = ~np.isnan(y_train[:,0])
+        xgb_model.fit(X_train[mask,:], -y_train[mask,0])
+        xgb_pred = xgb_model.predict(X_test)
+    else:
+        xgb_model = xgb.XGBClassifier(random_state=random_seed)
+        # only get values that are 0 or 1
+        mask = y_train > -1
+        xgb_model.fit(X_train[mask,:], y_train[mask])
+        xgb_pred = xgb_model.predict_proba(X_test)[:,1]
+
+    try:
+        roc_auc = roc_auc_score(y_test, xgb_pred)
+        return roc_auc, xgb_model
+    except Exception as e:
+        print(f"Exceptions raise at XGBOOST:  {e}")
+        return None, xgb_model
+        
 # function to prepare data
-def get_sampled_data(X, y, num_samples, random_state=42):
-    samp_frac = num_samples / np.shape(X)[0]
-    _, Xsamp, _, ysamp = train_test_split(X, y, test_size=samp_frac,
+def get_sampled_data(X, y, samples_frac, random_state=42):
+    _, Xsamp, _, ysamp = train_test_split(X, y, test_size=samples_frac,
                                         random_state=random_state,
                                         stratify=y)
     return Xsamp, ysamp
@@ -70,7 +72,7 @@ def label_propagation(X_train, labels, random_state=42, kernel='knn'):
     X_train = np.delete(X_train, remove_idx, axis=0)
     labels = np.delete(labels, remove_idx)
     
-    return X_train, labels
+    return X_train, labels, label_proba
 
 
 # functiom to evaluate model and log results
@@ -152,7 +154,11 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     scaler = StandardScaler()
     X_ = X.copy()
     X = scaler.fit_transform(X)
-    
+
+
+       # get samples from dataset
+    samples_frac = np.minimum(num_samples / np.shape(X)[0], 1.0)
+
     for frac in tqdm(fractions):
         test_size = 0.5
         print(f"\nDataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
@@ -169,10 +175,14 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                 for propagation in propagations:
                     for rep in range(reps):
                         # step1: data sample for training
-                        if X.shape[0]>= 1000:
-                            Xsamp, ysamp = get_sampled_data(X, y, num_samples, random_state=rep)
+                        if samples_frac <1:
+                            Xsamp, ysamp = get_sampled_data(X, y, samples_frac, random_state=rep)
                         else:
                             Xsamp, ysamp = X.copy(), y.copy()
+
+                        if len(np.unique(ysamp)) < 2:  # If there are fewer than two classes
+                            print(f"Warning: Dataset has fewer than 2 classes for replication {rep}. Skipping.")
+                            continue
 
                         # step2: Split into training and testing sets
                         try:
@@ -195,11 +205,14 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             
                             # perfom propagation if enabled
                             if propagation:
-                                X_train, y_train = label_propagation(X_train, labels, random_state=rep, kernel=kernel)
+                                X_train_unsup, y_train_unsup, label_proba = label_propagation(X_train, labels, random_state=rep, kernel=kernel)
                             else:
                                 remove_idx = np.where(labels == 1)[0]
-                                X_train = np.delete(X_train, remove_idx, axis=0)
-                                y_train = np.delete(y_train, remove_idx)
+                                X_train_unsup = np.delete(X_train, remove_idx, axis=0)
+                                y_train_unsup = np.delete(y_train, remove_idx)
+                        else:
+                            X_train_unsup = X_train.copy()
+                            y_train_unsup = y_train.copy()
 
                         # step4, train and get the metrics on test data
                         current_result = {
@@ -210,20 +223,29 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             'rep': rep,
                             'query_strategy': strategy, 
                             'propagation': propagation,
-                            'kernel': kernel
+                            'kernel': kernel,
+                            'num_labels': num_labels
                         }
                         
                         curr_auc_score, semi_detector_clf = train_and_evaluate_model(
-                            X_train, 
+                            X_train_unsup.copy(), 
                             X_test, 
-                            y_train, 
+                            y_train_unsup, 
                             y_test, 
                             semi_detector_clf
                         )
                         current_result["roc_auc"] = curr_auc_score
                         result_df = pd.DataFrame(current_result, index=[0])
-
-                        # step5: merge results
                         all_results = pd.concat([all_results, result_df], ignore_index=True)
+
+                        #perfoming xgboost call
+                        if num_labels > 0 and 0 in labels and 1 in labels:
+                            #use the original Xtrain data and its probalities incase we did propagation else just the actual labels queried
+                            reg_auc_score, regressor = train_xgboost_regressor(X_train, label_proba if propagation else labels, X_test, y_test, random_seed=rep, propagation=propagation)
+                            if reg_auc_score:
+                                current_result["roc_auc"] = reg_auc_score
+                                current_result['model'] = "XGB"
+                                result_df = pd.DataFrame(current_result, index=[0])
+                                all_results = pd.concat([all_results, result_df], ignore_index=True)
 
     return all_results
