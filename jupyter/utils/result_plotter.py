@@ -16,35 +16,26 @@ def plot_ssalad_results(results_df, results_path="results",log_scale=True):
         raise Exception(f"Ensure we have `fraction` on the columns, Columns found {results_df.columns}")
     
     strategies = list(results_df['query_strategy'].unique())
+    # sort by alphabetical order
+    strategies = sorted(strategies)
+
     propagation = list(results_df['propagation'].unique())
+    # sort by reverse alphabetical order
+    propagation = sorted(propagation, reverse=True)
 
     fractions = results_df["fraction"].unique().tolist()
-
     
     dataset_names = list(results_df['dataset'].unique())
+    num_strategies = len(strategies)
+    num_propagation = len(propagation)
+
+    # set colors for each strategy
+    colors = sns.color_palette('tab10', num_strategies)
+    # set line styles for each propagation
+    line_styles = ['-', '--']
 
     for dataset_name in dataset_names:
-
         dataset_results = results_df[results_df['dataset'] == dataset_name]
-        
-        if strategies is None:
-            strategies = list(dataset_results['query_strategy'].unique())
-            # sort by alphabetical order
-            strategies = sorted(strategies)
-
-        if propagation is None:
-            propagation = list(dataset_results['propagation'].unique())
-            # sort by reverse alphabetical order
-            propagation = sorted(propagation, reverse=True)
-        
-        num_strategies = len(strategies)
-        num_propagation = len(propagation)
-
-        # set colors for each strategy
-        colors = sns.color_palette('tab10', num_strategies)
-        # set line styles for each propagation
-        line_styles = ['-', '--']
-
         if log_scale and 0 in dataset_results['fraction'].unique():
             split_axis = True
         else:

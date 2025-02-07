@@ -24,7 +24,7 @@ if 'ALL' in all_datasets:
     all_datasets = [f.split('.npz')[0] for f in available_files]
 
 propagation_kernels = ["knn"]
-RESULTS_FOLDER = "results_26_optdigits"
+RESULTS_FOLDER = "results"
 
 total_datasets = len(all_datasets)
 
@@ -92,6 +92,6 @@ for each_kernel in propagation_kernels:
             with print_lock:
                 print(f"No results for model = {all_models[0]} and data = {each_data}")
             continue
-        plot_ssalad_results(curr_results, log_scale=True, results_path="results_26_optdigits")
+        plot_ssalad_results(curr_results, log_scale=True, results_path=RESULTS_FOLDER)
 
         
