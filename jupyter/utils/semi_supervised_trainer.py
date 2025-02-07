@@ -43,7 +43,6 @@ def train_xgboost_regressor(X_train, y_train, X_test, y_test, random_seed, propa
         mask = y_train > -1
         xgb_model.fit(X_train[mask,:], y_train[mask])
         xgb_pred = xgb_model.predict_proba(X_test)[:,1]
-
     try:
         roc_auc = roc_auc_score(y_test, xgb_pred)
         return roc_auc, xgb_model
@@ -63,6 +62,11 @@ def label_propagation(X_train, labels, random_state=42, kernel='knn'):
     label_prop_model = LabelPropagation(kernel=kernel)
     label_prop_model.fit(X_train, labels)
     label_proba = label_prop_model.predict_proba(X_train)
+
+    # replace label_proba with labels where labels are 0 or 1
+    mask = labels > -1
+    label_proba[mask,0] = 1 - labels[mask]
+
     
     rng = np.random.RandomState(random_state)
     random_values = rng.rand(len(X_train))
@@ -217,7 +221,7 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                         # step4, train and get the metrics on test data
                         current_result = {
                             'dataset': dataset_name, 
-                            'num_samples': len(y_train),
+                            'num_samples': len(ysamp),
                             'model': model_name, 
                             'fraction': frac, 
                             'rep': rep,
@@ -226,7 +230,9 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             'kernel': kernel,
                             'num_labels': num_labels
                         }
-                        
+                        if not np.shape(X_train_unsup)[0] > 0:  # in case where label prop tells us to remove all data
+                            X_train_unsup = X_train.copy()
+                            y_train_unsup = y_train.copy()
                         curr_auc_score, semi_detector_clf = train_and_evaluate_model(
                             X_train_unsup.copy(), 
                             X_test, 

@@ -12,10 +12,10 @@ from utils.result_plotter import plot_ssalad_results
 from utils.semi_supervised_trainer import run_experiment
 
 threads = 3
+
 curr_fractions = [0, 0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.013, 0.02, 0.03, 0.04, 0.06, 0.08, 0.1, 0.15, 0.2, 0.3, 0.45, 0.7, 1.0]
 all_models = ['IForest']
 all_datasets = ['11_donors', '33_skin', '26_optdigits', '45_wine', '12_fault', '30_satellite', '37_Stamps']
-
 # Verify the presence of dataset files
 data_dir = './data'
 available_files = [f for f in os.listdir(data_dir) if f.endswith('.npz')]
@@ -86,17 +86,12 @@ for kernel in propagation_kernels:
 # plot
 for each_kernel in propagation_kernels:
     kernel_df = all_kernel_results[each_kernel]
-    for each_data in kernel_df["dataset"].unique():
-        for model_num, each_model in enumerate(kernel_df["model"].unique()):
-            curr_results = kernel_df[(kernel_df['dataset'] == each_data) & (kernel_df['model'] == each_model)]
-            if curr_results.shape[0] <= 0:
-                with print_lock:
-                    print(f"No results for model = {all_models[0]} and data = {each_data}")
-                continue
-            plot_ssalad_results(curr_results, model_name=all_models[0], dataset=each_data, log_scale=True)
-            plt.tight_layout()
-            plt.savefig(f"{RESULTS_FOLDER}/{each_kernel}/png/plt_{each_model}_{each_data}.png")
-            # plt.show()
-
+    for model_num, each_model in enumerate(kernel_df["model"].unique()):
+        curr_results = kernel_df[(kernel_df['model'] == each_model)]
+        if curr_results.shape[0] <= 0:
+            with print_lock:
+                print(f"No results for model = {all_models[0]} and data = {each_data}")
+            continue
+        plot_ssalad_results(curr_results, log_scale=True, results_path="results_26_optdigits")
 
         
