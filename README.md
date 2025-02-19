@@ -60,7 +60,7 @@ all_models = ['IForest']
 
 
 ### 6. Files Generated
-
+- On the folder defined in main i.e `results` graphs and csv files will be generated.
 - `all_run.csv`: A CSV file containing the results of all experiments,
 - `{dataset}_run.csv`: A CSV file containing the results for a specific dataset.
 - `{model}_for_{dataset}_fig.png`: A plot showing the AUC scores for a specific model and dataset.
@@ -70,4 +70,12 @@ all_models = ['IForest']
 - **`utils/label_query.py`**:  Functions for querying labels in the dataset.
 - **`utils/result_plotter.py`**: Funtion for plotting the results of the experiment.
 - **`utils/semi_supervised_trainer.py`**: Function which runs the semi-supervised learning experiment for each dataset and model.
+
+
+### Reseach Papers References:
+- For some ideas on the working, some papers were reviewed which ca be seen on the folder `./jupyter/reseach_papers`. It has the following papers;
+    - SPADE: Semi-supervised Anomaly Detection under Distribution Mismatch
+    - Label Propagation for Deep SSL (generates a nearest neighbor graph and conducts label propagation through transductive learning on the training set.)
+    - ALIF (an extension of the already popular Isolation Forest (IF) anomaly detection model).
+
 
