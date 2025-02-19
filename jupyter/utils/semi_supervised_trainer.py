@@ -152,8 +152,6 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     if propagations is None:
         propagations = [True, False]
     all_results = pd.DataFrame()
-
-
     # scaler the data
     scaler = StandardScaler()
     X_ = X.copy()
