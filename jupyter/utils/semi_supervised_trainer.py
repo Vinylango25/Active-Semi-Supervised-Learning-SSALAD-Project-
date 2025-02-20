@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn.semi_supervised import LabelPropagation, LabelSpreading
 from sklearn.preprocessing import StandardScaler
 import logging
+import time
 
 from pyod.models.pca import PCA
 from pyod.models.knn import KNN
@@ -31,24 +32,28 @@ PYOD_SELECTED_MODELS = {
 
 
 
-def train_xgboost_regressor(X_train, y_train, X_test, y_test, random_seed, propagation):
+def train_xgboost_regressor(X_train, y_train, X_test, y_test, random_seed, propagation, params={}):
     if propagation and y_train.shape[1]>1:
-        xgb_model = xgb.XGBRegressor(random_state=random_seed)
+        xgb_model = xgb.XGBRegressor(random_state=random_seed, n_estimators = params.get("estimators", 100))
         mask = ~np.isnan(y_train[:,0])
+        train_size =  y_train[mask].shape[0]
         xgb_model.fit(X_train[mask,:], -y_train[mask,0])
         xgb_pred = xgb_model.predict(X_test)
     else:
-        xgb_model = xgb.XGBClassifier(random_state=random_seed)
+        xgb_model = xgb.XGBClassifier(random_state=random_seed, n_estimators = params.get("estimators", 100))
         # only get values that are 0 or 1
         mask = y_train > -1
+        train_size =  y_train[mask].shape[0]
         xgb_model.fit(X_train[mask,:], y_train[mask])
         xgb_pred = xgb_model.predict_proba(X_test)[:,1]
+
+    total_size = X_test.shape[0] + train_size
     try:
         roc_auc = roc_auc_score(y_test, xgb_pred)
-        return roc_auc, xgb_model
+        return roc_auc, xgb_model, total_size
     except Exception as e:
         print(f"Exceptions raise at XGBOOST:  {e}")
-        return None, xgb_model
+        return None, xgb_model, total_size
         
 # function to prepare data
 def get_sampled_data(X, y, samples_frac, random_state=42):
@@ -58,8 +63,8 @@ def get_sampled_data(X, y, samples_frac, random_state=42):
     return Xsamp, ysamp
 
 # ftn to perform label propagation if needed
-def label_propagation(X_train, labels, random_state=42, kernel='knn'):
-    label_prop_model = LabelPropagation(kernel=kernel)
+def label_propagation(X_train, labels, random_state=42, kernel='knn', params={}):
+    label_prop_model = LabelPropagation(kernel=kernel, n_neighbors = params.get("n_neighbors", 20))
     label_prop_model.fit(X_train, labels)
     label_proba = label_prop_model.predict_proba(X_train)
 
@@ -95,7 +100,7 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, semi_detector):
     return roc_auc, semi_detector
 
 # main experiment function
-def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=None, query_strategies=None, propagations=None, dataset_name="", kernel='knn'):
+def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=None, query_strategies=None, propagations=None, dataset_name="", kernel='knn', params= {"n_neighbors": 20, "estimators": 100}):
     """
         Run an experiment for active learning and semi-supervised learning on a given dataset, evaluating different query strategies, models, and configurations.
     
@@ -112,7 +117,7 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
         num_samples : int, optional, default=1000
             The number of samples to use for training in each repetition.
     
-        reps : int, optional, default=5
+        reps : int/list, optional, default=5
             The number of repetitions to run the experiment. Results will be averaged over these repetitions. The value is also used as a randon state value
     
         fractions : list of float, optional, default=None
@@ -152,6 +157,8 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
     if propagations is None:
         propagations = [True, False]
     all_results = pd.DataFrame()
+
+
     # scaler the data
     scaler = StandardScaler()
     X_ = X.copy()
@@ -163,7 +170,7 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
 
     for frac in tqdm(fractions):
         test_size = 0.5
-        print(f"\nDataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
+        #print(f"\nDataset: {dataset_name}, Fraction: {frac}, Test size: {test_size}")
         if not (0.0 < test_size < 1.0):
             error_message = f"Invalid test_size: {test_size} for fraction: {frac} in dataset: {dataset_name}"
             print(error_message)
@@ -175,7 +182,9 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
             semi_detector_clf = PYOD_SELECTED_MODELS[model_name]()
             for strategy in query_strategies:
                 for propagation in propagations:
-                    for rep in range(reps):
+                    if not isinstance(reps, list):
+                        reps = range(reps)
+                    for rep in reps:
                         # step1: data sample for training
                         if samples_frac <1:
                             Xsamp, ysamp = get_sampled_data(X, y, samples_frac, random_state=rep)
@@ -195,23 +204,26 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             logging.error(error_message)
                             continue
 
-                        #unsupervised model, this is used when strategy is uncertainity/anomalous
-                        unsup_detector = PYOD_SELECTED_MODELS[model_name]()
-                        unsup_detector.fit(X_train)
-
 
                         # step3: query labels if needed
                         num_labels = int(frac * len(y_train))
+                        total_usup_time_diff = 0
                         if num_labels > 0:
+                            unsup_start_time = time.time()
+                            #unsupervised model, this is used when strategy is uncertainity/anomalous
+                            unsup_detector = PYOD_SELECTED_MODELS[model_name]()
+                            unsup_detector.fit(X_train)
+
                             labels = query_labels(X_train, y_train, detector=unsup_detector, strategy=strategy, num_labels=num_labels)
                             
                             # perfom propagation if enabled
                             if propagation:
-                                X_train_unsup, y_train_unsup, label_proba = label_propagation(X_train, labels, random_state=rep, kernel=kernel)
+                                X_train_unsup, y_train_unsup, label_proba = label_propagation(X_train, labels, random_state=rep, kernel=kernel, params=params)
                             else:
                                 remove_idx = np.where(labels == 1)[0]
                                 X_train_unsup = np.delete(X_train, remove_idx, axis=0)
                                 y_train_unsup = np.delete(y_train, remove_idx)
+                            total_usup_time_diff = time.time() - unsup_start_time
                         else:
                             X_train_unsup = X_train.copy()
                             y_train_unsup = y_train.copy()
@@ -226,11 +238,16 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             'query_strategy': strategy, 
                             'propagation': propagation,
                             'kernel': kernel,
-                            'num_labels': num_labels
+                            'num_labels': num_labels,
+                            "total_cols": X_train.shape[1],
+                            'label_prop_time': total_usup_time_diff, 
+                            'estimators': params.get("estimators"),
+                            'n_neighbors': params.get("n_neighbors"),
                         }
                         if not np.shape(X_train_unsup)[0] > 0:  # in case where label prop tells us to remove all data
                             X_train_unsup = X_train.copy()
                             y_train_unsup = y_train.copy()
+                        time_start = time.time()
                         curr_auc_score, semi_detector_clf = train_and_evaluate_model(
                             X_train_unsup.copy(), 
                             X_test, 
@@ -239,16 +256,20 @@ def run_experiment(X, y, num_samples=1000, reps=5, fractions=None, model_names=N
                             semi_detector_clf
                         )
                         current_result["roc_auc"] = curr_auc_score
+                        current_result["time"] = time.time() - time_start
                         result_df = pd.DataFrame(current_result, index=[0])
                         all_results = pd.concat([all_results, result_df], ignore_index=True)
 
                         #perfoming xgboost call
                         if num_labels > 0 and 0 in labels and 1 in labels:
                             #use the original Xtrain data and its probalities incase we did propagation else just the actual labels queried
-                            reg_auc_score, regressor = train_xgboost_regressor(X_train, label_proba if propagation else labels, X_test, y_test, random_seed=rep, propagation=propagation)
+                            time_start = time.time()
+                            reg_auc_score, regressor, total_size = train_xgboost_regressor(X_train, label_proba if propagation else labels, X_test, y_test, random_seed=rep, propagation=propagation, params=params)
                             if reg_auc_score:
                                 current_result["roc_auc"] = reg_auc_score
                                 current_result['model'] = "XGB"
+                                current_result['num_samples'] = total_size
+                                current_result["time"] = time.time() - time_start
                                 result_df = pd.DataFrame(current_result, index=[0])
                                 all_results = pd.concat([all_results, result_df], ignore_index=True)
 
